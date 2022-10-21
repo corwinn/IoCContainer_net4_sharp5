@@ -227,7 +227,7 @@ namespace Examples
             IService4 service4_scope1 = ServiceCollection.GetBinding<IService4> ()
                 .Where (x => x is ServiceCollectionScopedBinding) // there could be other Set=true bindings
                 .Cast<ServiceCollectionScopedBinding> () // for "ServiceCollectionScopedBinding.Get<Interface>()"
-                .Where (b => b == b_Service4_scope1) // get the interested in scope only
+                .Where (b => b == b_Service4_scope1) // the scope(s) you're interested in
                 .First ()
                 .Get<IService4> (); // get the service
             service4_scope1.foo ();

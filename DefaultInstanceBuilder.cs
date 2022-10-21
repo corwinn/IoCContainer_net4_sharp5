@@ -38,7 +38,7 @@ namespace IoCContainer_net4_sharp5
 {
     /// <summary>
     /// Creates instance of type <c>"type"</c> using <c>Activator.CreateInstance</c> constructor selection.
-    /// No checking and or custom resoultion is being done. No generics support.
+    /// No checking and or custom resolution is being done. No generics support.
     /// </summary>
     public sealed class DefaultInstanceBuilder : IInstanceBuilder
     {

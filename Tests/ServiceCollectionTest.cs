@@ -273,7 +273,7 @@ namespace IoCContainer_net4_sharp5.Tests
             IndependentServiceFromAssembly (new ServiceCollectionSingletonBinding (), (a, b) => Assert.AreEqual (a, b));
         }
         [Test, Category (".Assembly")]
-        public void IndependentServiceFromAssemblyTransient() // diff --color-words IndependentServiceFromAssemblySingleton IndependentServiceFromAssemblyTransient
+        public void IndependentServiceFromAssemblyTransient()
         {
             IndependentServiceFromAssembly (new ServiceCollectionTransientBinding (), (a, b) => Assert.AreNotEqual (a, b));
         }

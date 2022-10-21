@@ -34,7 +34,7 @@
 
 #!/bin/bash
 
-# the usage usally is;
+# the usage usually is;
 # bash gen_ExampleServiceAssemblyAsByteArray.sh ExampleServiceAssembly/bin/Debug/ExampleServiceAssembly.dll > Tests/ExampleServiceAssemblyAsByteArray.cs
 
 cat << PROLOGUE
@@ -74,7 +74,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace IoCContainer_net4_sharp5.Tests
 {
-    class ExampleServiceAssemblyAsByteArray
+    internal sealed class ExampleServiceAssemblyAsByteArray
     {
         // hexdump -Cv ExampleServiceAssembly.dll | sed 's@|.*|@@'  | tr -s ' ' | grep -o "\( [0-9a-fA-F]\{2\}\)\{1,16\}" | sed s'@ \(..\)@ 0x\1,@g'
         public static byte[] for_unit_testing = {
@@ -85,6 +85,6 @@ hexdump -Cv ${1?} | sed 's@|.*|@@'  | tr -s ' ' | grep -o "\( [0-9a-fA-F]\{2\}\)
 
 cat << EPILOGUE
         };
-    }// class ExampleServiceAssemblyAsByteArray
+    }// internal sealed class ExampleServiceAssemblyAsByteArray
 }
 EPILOGUE

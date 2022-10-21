@@ -110,7 +110,7 @@ namespace IoCContainer_net4_sharp5
             if (null != Interface && null != Implementation) return; // no Transient Assembly loading
 
             // This is a scary function - be aware! - loading assemblies is never simple. Assume (this time only) time consuming.
-            //TODONT optimize; no point: you can't know what will happen during the next call or how much time it will take becase:
+            //TODONT optimize; no point: you can't know what will happen during the next call or how much time it will take because:
             //       S.o. could employ custom missing dependencies resolution, where s.o. could ask the user, via an interactive UI,
             //       to locate the missing dependencies, who can go, to lets say dinner, leaving the file dialog open and locate them the
             //       next week if he decides to; or s.o. could invoke the CodeDOM to build something on the fly; or s.o. could invoke

@@ -88,7 +88,7 @@ namespace IoCContainer_net4_sharp5
                 throw new ArgumentException ("Type not found.", "Interface");
             if (null == result.instance)
                 throw new Exception ("Fixme: service not created.");
-            return (Interface)result.instance; // should trow exception when ! (result.instance is Interface)
+            return (Interface)result.instance; // should throw exception when ! (result.instance is Interface)
         }
     }// ServiceCollectionScopedBinding
 }

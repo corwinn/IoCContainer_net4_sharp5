@@ -171,7 +171,7 @@ namespace IoCContainer_net4_sharp5
             }
             return p.Length == r;
         }
-        //TODO Resolvable() already has the info requred by this one. Do not improve these functions because Resolvable() will
+        //TODO Resolvable() already has the info required by this one. Do not improve these functions because Resolvable() will
         //     build all the required info and these will be deleted.
         /*private static ServiceCollectionBinding BindingByImplementation(Type type, ServiceCollectionBinding details)
         {// see TODO42
@@ -200,7 +200,7 @@ namespace IoCContainer_net4_sharp5
         }
 
         // reasons: less arguments for the recursive function; handles out of range access: less code at the said function;
-        //          name - helps debug recursive funciton;
+        //          name - helps debug recursive function;
         /// <summary>A simple private <c>object[]</c> wrapper. Simplifies <c>Create()</c> and helps with debugging.</summary>
         [System.Diagnostics.DebuggerDisplay ("name={Name} index={Idx} arg_num={Args.Length}")]
         private class NamedArgArray
@@ -228,7 +228,7 @@ namespace IoCContainer_net4_sharp5
         //     Don't write such functions: what follows has a lot of responsibilities within it making it hard to debug. maintain, and
         //     its probably riddled with bugs.
         //TODO It is supposed to choose a constructor with the biggest number of parameters whose service types are registered
-        //     with the ServiceCollection; to be prooved by the unit tests.
+        //     with the ServiceCollection; to be proved by the unit tests.
         /// <summary>
         /// A recursive function that creates a service, creating all its dependencies as needed honoring all bindings involved.
         /// Throws exceptions for bad arguments, wrong service configs, ambiguity situations, and some things I haven't noticed yet.
