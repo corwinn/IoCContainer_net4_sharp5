@@ -1,4 +1,4 @@
-[ ] dependency loop detection
+[v] dependency loop detection
 [ ] dependency parametrization: allow Interface | Implementation
 [ ] generics
 [ ] pass parameters that aren't services via a delegate set via an attribute

@@ -34,13 +34,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 using NUnit.Framework;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 /*
     I'm not about to describe every test. It should be simple enough for you to quickly figure it out.
-    Suffice to say: any code modification to the code being tested must keep this test suite happy.
+    Suffice to say: any code modification to the code being tested must keep this test suite, happy.
 
     TODO Codegen: random service trees (.ctor dependencies) (CodeDOM); sync. with TODO43 prior loop gen.
 */
@@ -80,9 +78,9 @@ namespace IoCContainer_net4_sharp5.Tests
             Assert.Catch (typeof (ArgumentException), () => ServiceCollection.GetBinding<IUnusedInterface> ().ToArray ());
         }
         [Test, Category ("InitialState")]
-        public void CantGetUnkownBindingsYieldReturn()
+        public void CantGetUnkownBindingsNoYieldReturn()
         {
-            Assert.IsNull (ServiceCollection.GetBinding<IUnusedInterface> ().GetEnumerator ().Current);
+            Assert.Catch (typeof (ArgumentException), () => ServiceCollection.GetBinding<IUnusedInterface> ());
         }
         [Test, Category ("InitialState")]
         public void DoesNotHaveUnknownService()
@@ -176,9 +174,9 @@ namespace IoCContainer_net4_sharp5.Tests
             Assert.Catch (typeof (ArgumentException), () => ServiceCollection.GetBinding<IService1> ().ToArray ());
         }
         [Test, Category (".Collection")]
-        public void AskingForUnknownBindingYieldReturn()
+        public void AskingForUnknownBindingNoYieldReturn()
         {
-            Assert.IsNull (ServiceCollection.GetBinding<IService1> ().GetEnumerator ().Current);
+            Assert.Catch (typeof (ArgumentException), () => ServiceCollection.GetBinding<IService1> ());
         }
         [Test, Category (".Collection")]
         public void DuplicateRegistrationNotASet()
@@ -270,12 +268,39 @@ namespace IoCContainer_net4_sharp5.Tests
         [Test, Category (".Assembly")]
         public void IndependentServiceFromAssemblySingleton()
         {
-            IndependentServiceFromAssembly (new ServiceCollectionSingletonBinding (), (a, b) => Assert.AreEqual (a, b));
+            IndependentServiceFromAssembly (decorated: new ServiceCollectionSingletonBinding (), test: (a, b) => Assert.AreEqual (a, b));
         }
         [Test, Category (".Assembly")]
         public void IndependentServiceFromAssemblyTransient()
         {
-            IndependentServiceFromAssembly (new ServiceCollectionTransientBinding (), (a, b) => Assert.AreNotEqual (a, b));
+            IndependentServiceFromAssembly (decorated: new ServiceCollectionTransientBinding (), test: (a, b) => Assert.AreNotEqual (a, b));
+        }
+
+        private interface i1 { }
+        private sealed class c1 : i1 { }
+        private interface i2 { }
+        private sealed class c2 : i2 { }
+        private interface i3 { }
+        private sealed class c3 : i3 { }
+        private interface i4 { }
+        private sealed class c4 : i4 { }
+        private interface i5 { }
+        private sealed class c5 : i5 { }
+        [Test, Category (".Has")]
+        public void Has()
+        {
+            ServiceCollectionBinding[] bindings = new ServiceCollectionBinding[] {
+                    new ServiceCollectionSingletonBinding().Bind<i1, c1>(),
+                    new ServiceCollectionTransientBinding().Bind<i2, c2>(),
+                    new ServiceCollectionScopedBinding().Bind<i3, c3>().Bind<i4, c4>()
+                };
+            foreach (var b in bindings) ServiceCollection.Register (b);
+            Assert.IsTrue (ServiceCollection.Has<i1> ());
+            Assert.IsTrue (ServiceCollection.Has<i2> ());
+            Assert.IsTrue (ServiceCollection.Has<i3> ());
+            Assert.IsTrue (ServiceCollection.Has<i4> ());
+            Assert.IsFalse (ServiceCollection.Has<i5> ());
+            foreach (var b in bindings) ServiceCollection.Deregister (b);
         }
 
         //TODO add some dependency resolution scenarios and not all bindings: each binding goes to its separate test unit

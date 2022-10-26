@@ -45,6 +45,7 @@
     <Compile Include="ExampleServiceAssemblyAsByteArray.cs" />
     <Compile Include="ServiceCollectionTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ServiceTreeNodeTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\IoCContainer_net4_sharp5.csproj">

@@ -58,20 +58,19 @@ namespace IoCContainer_net4_sharp5
         public AmbigousConstructorException(string message) : base (message: message) { }
     }
 
+    // There is no Build*, and the ServiceProvider == ServiceCollection.
+    // You can Register() services at any time. You can Deregister() them at anytime <=> it could modify
+    // the constructor selection on the next Get*. You should decide how your binding handles ConstructorChanged.
+    // Deregistering a running service won't stop it. All dependent services will continue running and referencing it.
+    //TODO add an Unregistered event.
     /// <summary>Hosts services as in f(DI, IoC). Turning this into DI service itself is a very tempting idea.</summary>
-    public sealed class ServiceCollection
+    public static class ServiceCollection
     {
         /// <summary>When ambiguity arises, mark the constructor you want called with this attribute.</summary>
         public class CallMeAttribute : Attribute { }
 
-        // Per domain Singleton.
-        // private static Mutex _the_way_is_shut = new Mutex (initiallyOwned: false, name: "ServiceCollectionMutex" + new Random ().Next ().ToString ());
-        //TODO1 Recall how "yield return" plays with synchronization objects.
-        /// <summary>Mutex - sync r/w, r/r, and w/w - one thread at a time. Perhaps a bad idea due to a yield return.</summary>
+        /// <summary>Mutex - sync r/w, r/r, and w/w - one thread at a time.</summary>
         private static Mutex _the_way_is_shut = new Mutex (initiallyOwned: false, name: "ServiceCollectionMutex");
-
-        private static int _n = 0;
-        private ServiceCollection() { if (_n++ > 0) throw new ArgumentException (this.GetType ().Name + ": create me twice: shame on you."); }
 
         /// <summary>Has all the <c>Set=false</c> bindings.</summary>
         private static Dictionary<Type, ServiceCollectionBinding> _b = new Dictionary<Type, ServiceCollectionBinding> ();
@@ -82,17 +81,17 @@ namespace IoCContainer_net4_sharp5
         private static void ValidateBinding(ServiceCollectionBinding binding)
         {
             if (null == binding)
-                throw new ArgumentException ("null binding - can't help you.", "binding");
+                throw new ArgumentException (Res.NO_NULLS, "binding");
             if (null == binding.Interface || binding.Interface.Count () <= 0
                 || null == binding.Implementation || binding.Implementation.Count () <= 0)
-                throw new ArgumentException ("Incomplete binding - can't help you.", "binding");
+                throw new ArgumentException (Res.BINDING_INCOMPLETE, "binding");
         }
 
         /// <summary>Register your service(s).</summary>
         public static void Register(ServiceCollectionBinding binding)
         {
             if (null == Builder)
-                throw new ArgumentException ("Please set ServiceCollection.Builder to something meaningful.", "Builder");
+                throw new ArgumentException (Res.MEANINGFUL_BUILDER, "Builder");
             ValidateBinding (binding);
 
             _the_way_is_shut.WaitOne ();
@@ -101,13 +100,13 @@ namespace IoCContainer_net4_sharp5
                 if (!binding.Set)
                 {
                     if (_b.ContainsKey (binding.Interface.First ()))
-                        throw new ArgumentException ("Replacing an implementations is off limits.", "binding.Interface");
+                        throw new ArgumentException (Res.BINDING_DUPLICATE, "binding.Interface");
                     _b[binding.Interface.First ()] = binding;
                 }
                 else
                 {
                     if (_s.ContainsKey (binding.Interface))
-                        throw new ArgumentException ("Replacing an implementations is off limits.", "binding.Interface");
+                        throw new ArgumentException (Res.BINDING_DUPLICATE, "binding.Interface");
                     else _s[binding.Interface] = binding;
                 }
             }
@@ -115,7 +114,7 @@ namespace IoCContainer_net4_sharp5
             {
                 _the_way_is_shut.ReleaseMutex ();
             }
-        }
+        }// public static void Register(ServiceCollectionBinding binding)
 
         /// <summary>Remove a binding from the ServiceCollection - this won't de-instantiate any services instantiated by it.</summary>
         public static void Deregister(ServiceCollectionBinding binding)
@@ -128,13 +127,13 @@ namespace IoCContainer_net4_sharp5
                 if (!binding.Set)
                 {
                     if (!_b.ContainsKey (binding.Interface.First ()))
-                        throw new ArgumentException ("Unknown binding.", "binding");
+                        throw new ArgumentException (Res.BINDING_UNKNOWN, "binding");
                     _b.Remove (binding.Interface.First ());
                 }
                 else
                 {
                     if (!_s.ContainsKey (binding.Interface))
-                        throw new ArgumentException ("Unknown binding.", "binding");
+                        throw new ArgumentException (Res.BINDING_UNKNOWN, "binding");
                     _s.Remove (binding.Interface);
                 }
             }
@@ -142,162 +141,114 @@ namespace IoCContainer_net4_sharp5
             {
                 _the_way_is_shut.ReleaseMutex ();
             }
+        }// public static void Deregister(ServiceCollectionBinding binding)
+
+        // Maps binding to service interface type, to anything else that might come into play someday:
+        // who knows puting something else here could reduce the code size in half - everything is possible ...
+        private sealed class NodeData : IServiceTreeNodeDataModel
+        {
+            private Type _t = null; // interface type
+            private ServiceCollectionBinding _b = null;
+            public NodeData(Type t, ServiceCollectionBinding b) { _t = t; _b = b; }
+            public override bool Equals(object obj) { var o = (NodeData)obj; return o._b == _b && o._t == _t; }
+            public override int GetHashCode() //LATER verify collision rate or just use a hash function generator
+            {
+                return ((_b.GetHashCode () * 234567891) >> 16) | ((_t.GetHashCode () * 123456791) << 16);
+            }
+
+            object IServiceTreeNodeDataModel.Create(object[] args)
+            {
+                return _b.Create (ServiceCollection.Builder, _b.GetImplementationType (_t), args);
+                // create via impl type: return _b.Create (ServiceCollection.Builder, _t, args);
+            }
         }
 
-        /// <summary>Returns true given the current level of constructor parameter types are present at the service collection.</summary>
-        private static bool Resolvable(ParameterInfo[] p, ServiceCollectionBinding details)
+        /// <summary>Returns a non-empty set of public constructors for the implemetation associated with "iface". Or throws exceptions.</summary>
+        private static ConstructorInfo[] GetConstructors(Type iface, ServiceCollectionBinding details)
         {
-            //TODO42 shall I resolve by impl or iface or both?
-            //     currently resolves by interface
-            if (null == p) return false;
-            if (0 == p.Length) return true;
-            int r = 0;
-            foreach (var itm in p)
+            Type to_construct = details.GetImplementationType (iface);
+            var constructors = to_construct.GetConstructors (bindingAttr: BindingFlags.Instance | BindingFlags.Public);
+            if (null == constructors || constructors.Length <= 0)
+                throw new ArgumentException (Res.FMT_NO_CONSTRUCTORS (to_construct.Name, iface.Name), "details");
+            const int TOO_MANY_CONSTRUCTORS = 1 << 3;
+            if (constructors.Length > TOO_MANY_CONSTRUCTORS)
+                throw new ArgumentException (Res.FMT_UPPER_LIMIT_CONSIDERATION (string.Format (
+                    "constructors for \"{0}: {1}\"", to_construct.Name, iface.Name), "TOO_MANY_CONSTRUCTORS"), "details");
+            var c_m = constructors.Where (x =>
+                {
+                    var tmp = x.GetCustomAttributes (typeof (CallMeAttribute), inherit: false);
+                    return null != tmp && 1 == tmp.Length;
+                });
+            if (c_m.Count () > 1)
+                throw new ArgumentException (Res.ONE_CALLME_CONSTRUCTOR, "details");
+            return c_m.Count () == 1 ? c_m.ToArray () : constructors.ToArray ();
+        }
+
+        /// <summary>Does the tree build.</summary>
+        private static void Resolve_InvTreeBuild(Type t, ServiceCollectionBinding b, ServiceTreeNode<NodeData> r)
+        {
+            ServiceTreeNode<NodeData> node = new ServiceTreeNode<NodeData> (new NodeData (t, b));
+            node.Insert (r); // tmp_root depends on node
+            Resolve (t, b, node);
+        }
+
+        private static int _resolve_so_protection = 0;
+        private const int _RESOLVE_MAX_REENTRY = 1 << 12;
+        //TODO42 resolve by interface only?
+        //TODONT make the tree a state; it will add tons of complexity and code, and events, and bugs.
+        /// <summary>Resolves the constructor mess: selects the more appropriate ones, detects dependency loops, etc. Throws exceptions.</summary>
+        private static ServiceTreeNode<NodeData> Resolve(Type iface, ServiceCollectionBinding details, ServiceTreeNode<NodeData> tmp_root)
+        {
+            if (_resolve_so_protection++ >= _RESOLVE_MAX_REENTRY)
+                throw new Exception (Res.FMT_INFINITE_LOOP_PROBABLY ("RESOLVE_MAX_REENTRY"));
+            List<ParameterInfo[]> constructor_list = new List<ParameterInfo[]> ();
+            foreach (var ci in GetConstructors (iface, details).OrderByDescending (c => c.GetParameters ().Length))
             {
-                //LATER perhaps its a good idea to update a dep. tree here: faster, dep. loop detection, more code - more bugs, etc.
-                // look at the set 1st
-                // see TODO42 if (details.Set && details.Implementation.Contains (itm.ParameterType)) { r++; continue; }
-                if (details.Set && details.Interface.Contains (itm.ParameterType)) { r++; continue; }
-                // Look at all sets?
-                //TODO is there at least one objective reason setX services to be allowed to depend on setY one(s) given that setX has them not?
+                var constructor_params = ci.GetParameters ();
+                int resolved_params = 0;
+                foreach (var itm in constructor_params)
+                {
+                    // look at the set 1st; see TODO42 if (details.Set && details.Implementation.Contains (itm.ParameterType)) { r++; continue; }
+                    if (details.Set && details.Interface.Contains (itm.ParameterType))
+                    {
+                        Resolve_InvTreeBuild (itm.ParameterType, details, tmp_root);
+                        resolved_params++;
+                        continue;
+                    }
+                    //TODO is there at least one objective reason setX services to be allowed to depend on setY one(s) given that setX has them not?
 #if CROSS_SET_LOOKUP
                 foreach (var kv in _s.Where (kv => kv.Value != details))
                     if (kv.Value.Implementation.Contains (itm.ParameterType)) { r++; continue; }
 #endif
-                // look at the 1:1 table
-                foreach (var kv in _b)
-                    // see TODO42 if (kv.Value.Implementation.First () == itm.ParameterType) { r++; continue; }
-                    if (kv.Value.Interface.First () == itm.ParameterType) { r++; continue; }
-            }
-            return p.Length == r;
-        }
-        //TODO Resolvable() already has the info required by this one. Do not improve these functions because Resolvable() will
-        //     build all the required info and these will be deleted.
-        /*private static ServiceCollectionBinding BindingByImplementation(Type type, ServiceCollectionBinding details)
-        {// see TODO42
-            if (details.Set && details.Implementation.Contains (type)) return details;
-#if CROSS_SET_LOOKUP
-            foreach (var kv in _s.Where (kv => kv.Value != details))
-                if (kv.Value.Implementation.Contains (type)) return kv.Value;
-#endif
-            foreach (var kv in _b)
-                if (kv.Value.Implementation.Contains (type)) return kv.Value;
-            throw new Exception (string.Format ("Can't find binding for Implementation \"{0}\"", type.FullName));
-        }*/
-        /// <summary>Returns the binding that bonds the <c>typeof(Interface)<c> as <c>"type"</c></summary>
-        /// <param name="details">The <c>Set=true</c> binding to look for <c>typeof(Interface)</c></param>
-        /// <remarks>It looks at details 1st if <c>details.Set</c>, and at the non-set ones 2nd.</remarks>
-        private static ServiceCollectionBinding BindingByInterface(Type type, ServiceCollectionBinding details)
-        {// see TODO42
-            if (details.Set && details.Interface.Contains (type)) return details;
-#if CROSS_SET_LOOKUP
-            foreach (var kv in _s.Where (kv => kv.Value != details))
-                if (kv.Value.Interface.Contains (type)) return kv.Value;
-#endif
-            foreach (var kv in _b)
-                if (kv.Value.Interface.Contains (type)) return kv.Value;
-            throw new Exception (string.Format ("Can't find binding for Interface \"{0}\"", type.FullName));
-        }
+                    // look at the 1:1 table; see TODO42 foreach (var kv in _b) if (kv.Value.Interface.First () == itm.ParameterType)
+                    ServiceCollectionBinding binding = null;
+                    if (_b.TryGetValue (itm.ParameterType, out binding))
+                    {
+                        Resolve_InvTreeBuild (itm.ParameterType, binding, tmp_root);
+                        resolved_params++;
+                        continue;
+                    }
+                }// foreach (var itm in ci.GetParameters ())
+                if (resolved_params == constructor_params.Count ()) constructor_list.Add (constructor_params); else tmp_root.Remove ();
+            }// foreach (var ci in GetConstructors (iface, details))
+            if (constructor_list.Count < 1)
+                throw new NoSuitableConstructorException (Res.FMT_NO_SUITABLE_CONSTRUCTOR (iface.Name));
+            if (constructor_list.Count > 1 && constructor_list[0].Length == constructor_list[1].Length)
+                throw new AmbigousConstructorException (Res.FMT_AMBIGUOUS_CONSTRCUTORS (iface.Name));
+            return tmp_root;
+        }// Resolve()
 
-        // reasons: less arguments for the recursive function; handles out of range access: less code at the said function;
-        //          name - helps debug recursive function;
-        /// <summary>A simple private <c>object[]</c> wrapper. Simplifies <c>Create()</c> and helps with debugging.</summary>
-        [System.Diagnostics.DebuggerDisplay ("name={Name} index={Idx} arg_num={Args.Length}")]
-        private class NamedArgArray
-        {
-            public NamedArgArray(string name = "Name me", int capacity = 1)
-            {
-                _a = new object[capacity];
-                Idx = 0;
-                Name = name;
-            }
-            private object[] _a = null;
-            public object[] Args { get { return _a; } }
-            public int Idx { get; set; } // state var bound to the Args[] array - last access index: foo.Args[foo.Idx]
-            public string Name { get; private set; } // debug helper
-            public object this[int index] // out of range access is allowed
-            {
-                get { return (index < 0 || index >= _a.Length) ? null : _a[index]; }
-                set { if (index < 0 || index >= _a.Length) return; _a[index] = value; }
-            }
-            public static readonly NamedArgArray Empty = new NamedArgArray ();
-        }
-
-        private static int tmp_stack_overflow_protection = 0; // see TODO43
-        //TODO Unspaghettify me.
-        //     Don't write such functions: what follows has a lot of responsibilities within it making it hard to debug. maintain, and
-        //     its probably riddled with bugs.
-        //TODO It is supposed to choose a constructor with the biggest number of parameters whose service types are registered
-        //     with the ServiceCollection; to be proved by the unit tests.
         /// <summary>
-        /// A recursive function that creates a service, creating all its dependencies as needed honoring all bindings involved.
+        /// A function that creates a service, creating all its dependencies as needed honoring all bindings involved.
         /// Throws exceptions for bad arguments, wrong service configs, ambiguity situations, and some things I haven't noticed yet.
         /// </summary>
-        private static object Create(Type iface, ServiceCollectionBinding details, NamedArgArray args)
+        private static object Create(Type iface, ServiceCollectionBinding details)
         {
-            if (tmp_stack_overflow_protection++ > (1 << 10)) // (1<<10)*3*(8 or 16 or who knows how much)
-                throw new Exception ("Fixme: an endless loop probably");
-            try
-            {
-                if (null == details)
-                    throw new ArgumentException ("No null details this side of ...", "details");
-                Type to_construct = details.GetImplementationType (iface);
-                // select constructor
-                ConstructorInfo ci = null;
-                var constructors = to_construct.GetConstructors (bindingAttr: BindingFlags.Instance | BindingFlags.Public);
-                if (null == constructors || constructors.Length <= 0)
-                    throw new ArgumentException (string.Format ("No constructors found for \"{0}: {1}\"",
-                        to_construct.Name, iface.Name), "details");
-                const int TOO_MANY_CONSTRUCTORS = 1 << 3;
-                if (constructors.Length > TOO_MANY_CONSTRUCTORS)
-                    throw new ArgumentException (string.Format ("Too many constructors found for \"{0}: {1}\". Please consider a redesign.",
-                        to_construct.Name, iface.Name), "details");
-                var c_m = constructors.Where (x =>
-                    {
-                        var tmp = x.GetCustomAttributes (typeof (CallMeAttribute), inherit: false);
-                        return null != tmp && 1 == tmp.Length;
-                    });
-                if (c_m.Count () > 1)
-                    throw new ArgumentException ("Please mark exactly one public constructor with the CallMeAttribute", "details");
-                if (c_m.Count () == 1) ci = c_m.First ();
-                else // The short'n simple failed.
-                {
-                    // Select the one with the biggest number of parameters whose types can be resolved.
-                    var bnp_set = constructors.Select (c =>
-                        {
-                            var p = c.GetParameters ();
-                            return new { num = (null == p ? 0 : p.Length), ci = (Resolvable (p, details) ? c : null) };
-                        }).Where (a => null != a.ci).OrderByDescending (a => a.num).Select (x => x.ci).ToArray ();
-                    if (bnp_set.Length <= 0)
-                        throw new NoSuitableConstructorException (string.Format (
-                            "No suitable constructor found for service \"{0}\"", iface.Name));
-                    if (bnp_set.Length > 1 && bnp_set[0].GetParameters ().Length == bnp_set[1].GetParameters ().Length)
-                        throw new AmbigousConstructorException (string.Format (
-                            "Ambigous constructors found for service \"{0}\"", iface.Name));
-                    ci = bnp_set[0];
-                }
-                // Now that a constructor is selected, do employ the "divine" and be aware of stack overflows.
-                var ci_params = ci.GetParameters ();
-                if (0 == ci_params.Length)
-                    args[args.Idx] = details.Create (Builder, to_construct, new object[] { });
-                else
-                {
-                    NamedArgArray ci_args = new NamedArgArray (ci.ReflectedType.FullName, ci_params.Length);
-                    ci_args.Idx = 0;
-                    foreach (var param in ci_params)
-                    {
-                        //TODO43 replace with a stack
-                        //see TODO42
-                        //args[args.Idx] = Create (param.ParameterType, BindingByImplementation (param.ParameterType, details), ci_args);
-                        ci_args[ci_args.Idx] = Create (param.ParameterType, BindingByInterface (param.ParameterType, details), ci_args);
-                        ci_args.Idx++;
-                    }
-                    args[args.Idx] = details.Create (Builder, to_construct, ci_args.Args);
-                }
-                return args[args.Idx];
-            }
-            finally { tmp_stack_overflow_protection--; }
-        }// private static object Create(Type iface, ServiceCollectionBinding details, NamedArgArray args)
+            if (null == details) throw new ArgumentException (Res.NO_NULLS, "details");
+            _resolve_so_protection = 0;
+            return Resolve (iface, details, new ServiceTreeNode<NodeData> (
+                new NodeData (iface, details))).Create ();
+        }
 
         /// <summary>Creates your service(s) on demand.</summary>
         public static Interface Get<Interface>() where Interface : class
@@ -306,11 +257,11 @@ namespace IoCContainer_net4_sharp5
             try
             {
                 // lets try with create on demand
-                if (_b.ContainsKey (typeof (Interface))) return (Interface)Create (typeof (Interface), _b[typeof (Interface)], NamedArgArray.Empty);
+                if (_b.ContainsKey (typeof (Interface))) return (Interface)Create (typeof (Interface), _b[typeof (Interface)]);
                 if (_s.Where (kv => kv.Key.Contains (typeof (Interface))).Count () > 0)
                     throw new Exception ("Please use GetBinding() for binding that contains type set");
                 else
-                    throw new ArgumentException (string.Format ("Unknown service: \"{0}\"", typeof (Interface).FullName), "Interface");
+                    throw new ArgumentException (Res.FMT_SERVICE_UNKNOWN (typeof (Interface).FullName), "Interface");
             }
             finally
             {
@@ -318,34 +269,27 @@ namespace IoCContainer_net4_sharp5
             }
         }
 
-        //TODO perhaps yield return is not ok with WaitOne()
         /// <summary>
         /// Creates your service(s) on demand - the demand being governed by yield return.
-        /// Use this when your binding contain a set of services itself. Just to be on the
-        /// thread-safe side use your your own locking until the last yreturn is executed.
+        /// Use this when your binding contain a set of services itself.
         /// </summary>
         public static IEnumerable<ServiceCollectionBinding> GetBinding<Interface>() where Interface : class
         {
-            //TODO this threw AbandonedMutexException at least once when the test assembly was loaded by "testcentric"
-            //     and "Examples" was ran. Reproduce: step after WaitOne; stop debugging; profit
-            // OS object (after adding the random number above):
-            //  Examples.exe: Mutant, \Sessions\1\BaseNamedObjects\ServiceCollectionMutex214940747, 0x5d8
-            //  nunit-agent : Mutant, \Sessions\1\BaseNamedObjects\ServiceCollectionMutex1008353641, 0x5f8
-            //TODO cross-domain singleton.
-            //  Examples.exe: Mutant, \Sessions\1\BaseNamedObjects\ServiceCollectionMutex, 0x5f4
-            //  nunit-agent : Mutant, \Sessions\1\BaseNamedObjects\ServiceCollectionMutex, 0x5e4
             _the_way_is_shut.WaitOne ();
             try
             {
                 if (_b.ContainsKey (typeof (Interface)))
                     throw new Exception ("Please use Get() for bindings that contains no type set");
+                List<ServiceCollectionBinding> result = new List<ServiceCollectionBinding> ();
                 foreach (var kv in _s)
                     if (kv.Key.Contains (typeof (Interface)))
                     {
-                        Create (typeof (Interface), kv.Value, NamedArgArray.Empty);
-                        yield return kv.Value;
+                        Create (typeof (Interface), kv.Value);
+                        result.Add (kv.Value);
                     }
-                throw new ArgumentException (string.Format ("Unknown service: \"{0}\"", typeof (Interface).FullName), "Interface");
+                if (result.Count <= 0)
+                    throw new ArgumentException (Res.FMT_SERVICE_UNKNOWN (typeof (Interface).FullName), "Interface");
+                else return result;
             }
             finally
             {
@@ -367,8 +311,24 @@ namespace IoCContainer_net4_sharp5
             }
         }
 
-        //TODO Its strongly advisable to not change this during Get or GetBinding enumeration
         /// <summary>The "service" that actually does the object instantiation.</summary>
-        public static IInstanceBuilder Builder { get; set; }
+        private static IInstanceBuilder _builder = null;
+        public static IInstanceBuilder Builder
+        {
+            get { return _builder; }
+            set
+            {
+                if (object.ReferenceEquals (_builder, value)) return;
+                _the_way_is_shut.WaitOne ();
+                try
+                {
+                    _builder = value;
+                }
+                finally
+                {
+                    _the_way_is_shut.ReleaseMutex ();
+                }
+            }
+        }
     }// public sealed class ServiceCollection
 }
