@@ -1,9 +1,11 @@
 Please, do no use this as a learning source; I wrote how not to do things at a
 few places in the code, but I'm sure I failed to cover all cases. Thank you.
 
+
 What is it?
 ===========
 It is my attempt at understanding IoC Containers and DI.
+
 
 What does it allow you to do?
 =============================
@@ -14,6 +16,12 @@ one place and query the "service"s at other places thus decoupling the two (
 setup and initialization from usage) via interface contracts and a "service"
 "pool" (IoC Container).
 
+Build
+=====
+A "cmake" option is provided. Example:
+> mkdir _build
+> cd _build
+> cmake -G "Visual Studio 12 2013 Win64" PATH_TO_THE_SOURCE
 
 Credits
 =======
