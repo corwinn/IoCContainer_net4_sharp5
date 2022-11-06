@@ -19,6 +19,7 @@ add_library(${ASM} SHARED ${${ASM}_src}
 )
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Examples)
+# Required, because "cmake" has no notion of "assembly".
 set_property(TARGET ${ASM} PROPERTY ENABLE_EXPORTS ON)
 # useless:
 #set_property(TARGET ${ASM} PROPERTY VS_GLOBAL_Prefer32Bit "false")
@@ -32,7 +33,7 @@ set_property(TARGET ${ASM} PROPERTY VS_DOTNET_REFERENCES
     "System.Xml"
     "System.Xml.Linq"
 )
-# Required, because "cmake" has no notion of "assembly".
+
 add_subdirectory("Examples")
 add_subdirectory("ExampleServiceAssembly")
 add_subdirectory("Tests")
